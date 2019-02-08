@@ -9,7 +9,12 @@ namespace forestpeas.WebSocketClient
 {
     internal sealed class WebSocketClient
     {
-        private WebSocketClient() { }
+        private readonly NetworkStream _networkStream;
+
+        private WebSocketClient(NetworkStream networkStream)
+        {
+            _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
+        }
 
         public static async Task<WebSocketClient> ConnectAsync(Uri uri)
         {
@@ -20,7 +25,7 @@ namespace forestpeas.WebSocketClient
 
             var tcpClient = new TcpClient();
             await tcpClient.ConnectAsync(uri.Host, uri.Port);
-            var connectionStream = tcpClient.GetStream(); // TODO: disose the stream
+            var networkStream = tcpClient.GetStream(); // TODO: disose the stream
 
             // handshake
             Random rand = new Random();
@@ -35,9 +40,9 @@ namespace forestpeas.WebSocketClient
                              $"Sec-WebSocket-Version: 13\r\n" +
                              $"Origin: http://{uri.Host}:{uri.Port}\r\n\r\n";
             byte[] requestBytes = Encoding.UTF8.GetBytes(request);
-            connectionStream.Write(requestBytes, 0, requestBytes.Length);
+            await networkStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
-            using (StreamReader reader = new StreamReader(connectionStream, Encoding.UTF8, true, 1024, true))
+            using (StreamReader reader = new StreamReader(networkStream, Encoding.UTF8, true, 1024, true))
             {
                 string responseLine = await reader.ReadLineAsync();
                 if (responseLine != "HTTP/1.1 101 Switching Protocols")
@@ -50,7 +55,7 @@ namespace forestpeas.WebSocketClient
                     responseLine = await reader.ReadLineAsync();
                     if (responseLine == null) // end of stream
                     {
-                        throw new InvalidOperationException("Server closed connection.");
+                        throw new EndOfStreamException("Server closed connection.");
                     }
                     if (responseLine == string.Empty) break; // finished reading headers
 
@@ -70,7 +75,82 @@ namespace forestpeas.WebSocketClient
                 }
             }
 
-            return new WebSocketClient();
+            return new WebSocketClient(networkStream);
+        }
+
+        public async Task<string> ReceiveStringAsync()
+        {
+            byte[] buffer = new byte[2];
+            await ReadStreamAsync(buffer, 2);
+
+            byte firstByte = buffer[0];
+            bool isFinBitSet = (firstByte & 0x80) == 0x80;
+            if (!isFinBitSet)
+            {
+                throw new NotImplementedException("work in progress");
+            }
+
+            int opCode = firstByte & 0x0F;
+
+            byte secondByte = buffer[1];
+            bool isMaskBitSet = (secondByte & 0x80) == 0x80;
+            if (isMaskBitSet)
+            {
+                // TODO: according to spec, close the connection.
+            }
+
+            int payloadLength = secondByte & 0x7F;
+            if (payloadLength == 126)
+            {
+                await ReadStreamAsync(buffer, 2);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(buffer);
+                }
+                payloadLength = BitConverter.ToUInt16(buffer, 0);
+            }
+            else if (payloadLength == 127)
+            {
+                buffer = new byte[8];
+                await ReadStreamAsync(buffer, 8);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(buffer);
+                }
+                ulong lengthUInt64 = BitConverter.ToUInt64(buffer, 0);
+
+                ulong maxLength = 1024 * 1024 * 10;// TODO: change to property that can be set
+                if (lengthUInt64 > maxLength)
+                {
+                    throw new InvalidOperationException($"Payload length cannot exceed{maxLength}");
+                }
+                if (lengthUInt64 > int.MaxValue) // for simplicity for now (Stream.Read does not accept a ulong count parameter)
+                {
+                    throw new NotSupportedException($"Payload length cannot exceed{int.MaxValue}");
+                }
+
+                payloadLength = (int)lengthUInt64;
+            }
+
+            byte[] payload = new byte[payloadLength];
+            await ReadStreamAsync(payload, payloadLength);
+
+            switch (opCode) // TODO: complete other types of opCode
+            {
+                case 1: // text frame
+                    return Encoding.UTF8.GetString(payload);
+                default:
+                    throw new NotSupportedException($"Unknown opcode \"{opCode}\" from server.");
+            }
+        }
+
+        private async Task ReadStreamAsync(byte[] buffer, int count)
+        {
+            int bytesRead = await _networkStream.ReadAsync(buffer, 0, 2);
+            if (bytesRead == 0)
+            {
+                throw new EndOfStreamException("Server closed connection.");
+            }
         }
     }
 }
