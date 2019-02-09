@@ -24,7 +24,7 @@ namespace forestpeas.WebSocketClient
             }
 
             var tcpClient = new TcpClient();
-            await tcpClient.ConnectAsync(uri.Host, uri.Port);
+            await tcpClient.ConnectAsync(uri.Host, uri.Port).ConfigureAwait(false);
             var networkStream = tcpClient.GetStream(); // TODO: disose the stream
 
             // handshake
@@ -40,11 +40,11 @@ namespace forestpeas.WebSocketClient
                              $"Sec-WebSocket-Version: 13\r\n" +
                              $"Origin: http://{uri.Host}:{uri.Port}\r\n\r\n";
             byte[] requestBytes = Encoding.UTF8.GetBytes(request);
-            await networkStream.WriteAsync(requestBytes, 0, requestBytes.Length);
+            await networkStream.WriteAsync(requestBytes, 0, requestBytes.Length).ConfigureAwait(false);
 
             using (StreamReader reader = new StreamReader(networkStream, Encoding.UTF8, true, 1024, true))
             {
-                string responseLine = await reader.ReadLineAsync();
+                string responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
                 if (responseLine != "HTTP/1.1 101 Switching Protocols")
                 {
                     throw new InvalidOperationException("Unexpected response line from server: " + responseLine);
@@ -52,7 +52,7 @@ namespace forestpeas.WebSocketClient
 
                 while (true)
                 {
-                    responseLine = await reader.ReadLineAsync();
+                    responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
                     if (responseLine == null) // end of stream
                     {
                         throw new EndOfStreamException("Server closed connection.");
@@ -81,7 +81,7 @@ namespace forestpeas.WebSocketClient
         public async Task<string> ReceiveStringAsync()
         {
             byte[] buffer = new byte[2];
-            await ReadStreamAsync(buffer, 2);
+            await ReadStreamAsync(buffer, 2).ConfigureAwait(false);
 
             byte firstByte = buffer[0];
             bool isFinBitSet = (firstByte & 0x80) == 0x80;
@@ -102,7 +102,7 @@ namespace forestpeas.WebSocketClient
             int payloadLength = secondByte & 0x7F;
             if (payloadLength == 126)
             {
-                await ReadStreamAsync(buffer, 2);
+                await ReadStreamAsync(buffer, 2).ConfigureAwait(false);
                 if (BitConverter.IsLittleEndian)
                 {
                     Array.Reverse(buffer);
@@ -112,7 +112,7 @@ namespace forestpeas.WebSocketClient
             else if (payloadLength == 127)
             {
                 buffer = new byte[8];
-                await ReadStreamAsync(buffer, 8);
+                await ReadStreamAsync(buffer, 8).ConfigureAwait(false);
                 if (BitConverter.IsLittleEndian)
                 {
                     Array.Reverse(buffer);
@@ -133,7 +133,7 @@ namespace forestpeas.WebSocketClient
             }
 
             byte[] payload = new byte[payloadLength];
-            await ReadStreamAsync(payload, payloadLength);
+            await ReadStreamAsync(payload, payloadLength).ConfigureAwait(false);
 
             switch (opCode) // TODO: complete other types of opCode
             {
@@ -146,7 +146,7 @@ namespace forestpeas.WebSocketClient
 
         private async Task ReadStreamAsync(byte[] buffer, int count)
         {
-            int bytesRead = await _networkStream.ReadAsync(buffer, 0, 2);
+            int bytesRead = await _networkStream.ReadAsync(buffer, 0, 2).ConfigureAwait(false);
             if (bytesRead == 0)
             {
                 throw new EndOfStreamException("Server closed connection.");
