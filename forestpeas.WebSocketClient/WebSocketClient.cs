@@ -144,6 +144,61 @@ namespace forestpeas.WebSocketClient
             }
         }
 
+        public async Task SendStringAsync(string message)
+        {
+            byte[] payload = Encoding.UTF8.GetBytes(message);
+            using (MemoryStream memoryStream = new MemoryStream())
+            {
+                byte fin = 0x80;
+                byte opCode = 1; // text frame
+                byte firstByte = (byte)(fin | opCode);
+                memoryStream.WriteByte(firstByte);
+
+                byte mask = 0x80; // cient must mask the payload
+                if (payload.Length < 126)
+                {
+                    byte secondByte = (byte)(mask | payload.Length);
+                    memoryStream.WriteByte(secondByte);
+                }
+                else if (payload.Length <= ushort.MaxValue)
+                {
+                    byte secondByte = (byte)(mask | 126);
+                    memoryStream.WriteByte(secondByte);
+
+                    byte[] buffer = BitConverter.GetBytes((ushort)payload.Length);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(buffer);
+                    }
+                    memoryStream.Write(buffer, 0, buffer.Length);
+                }
+                else
+                {
+                    byte secondByte = (byte)(mask | 127);
+                    memoryStream.WriteByte(secondByte);
+
+                    byte[] buffer = BitConverter.GetBytes((ulong)payload.Length);
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(buffer);
+                    }
+                    memoryStream.Write(buffer, 0, buffer.Length);
+                }
+
+                byte[] maskingKey = new byte[4];
+                new Random().NextBytes(maskingKey);
+                memoryStream.Write(maskingKey, 0, maskingKey.Length);
+
+                for (int i = 0; i < payload.Length; i++)
+                {
+                    payload[i] = (byte)(payload[i] ^ maskingKey[i % 4]);
+                }
+
+                memoryStream.Write(payload, 0, payload.Length);
+                await memoryStream.CopyToAsync(_networkStream).ConfigureAwait(false);
+            }
+        }
+
         private async Task ReadStreamAsync(byte[] buffer, int count)
         {
             int bytesRead = await _networkStream.ReadAsync(buffer, 0, 2).ConfigureAwait(false);
