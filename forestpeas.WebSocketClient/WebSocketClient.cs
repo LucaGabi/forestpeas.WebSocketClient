@@ -7,16 +7,17 @@ using System.Threading.Tasks;
 
 namespace forestpeas.WebSocketClient
 {
-    internal sealed class WebSocketClient
+    public sealed class WsClient : IDisposable
     {
         private readonly NetworkStream _networkStream;
+        private bool _disposed = false;
 
-        private WebSocketClient(NetworkStream networkStream)
+        private WsClient(NetworkStream networkStream)
         {
             _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
         }
 
-        public static async Task<WebSocketClient> ConnectAsync(Uri uri)
+        public static async Task<WsClient> ConnectAsync(Uri uri)
         {
             if (uri.Scheme.ToLower() == "wss")
             {
@@ -75,7 +76,7 @@ namespace forestpeas.WebSocketClient
                 }
             }
 
-            return new WebSocketClient(networkStream);
+            return new WsClient(networkStream);
         }
 
         public async Task<string> ReceiveStringAsync()
@@ -195,6 +196,7 @@ namespace forestpeas.WebSocketClient
                 }
 
                 memoryStream.Write(payload, 0, payload.Length);
+                memoryStream.Seek(0, SeekOrigin.Begin);
                 await memoryStream.CopyToAsync(_networkStream).ConfigureAwait(false);
             }
         }
@@ -205,6 +207,15 @@ namespace forestpeas.WebSocketClient
             if (bytesRead == 0)
             {
                 throw new EndOfStreamException("Server closed connection.");
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _networkStream.Dispose();
+                _disposed = true;
             }
         }
     }
