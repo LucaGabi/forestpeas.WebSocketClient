@@ -10,22 +10,44 @@ using Xunit;
 
 namespace forestpeas.WebSocketClient.Tests
 {
-    public class WebSocketClientTest
+    public class WebSocketServerFixture : IDisposable
     {
+        private readonly TcpListener _tcpListener;
+
+        public WebSocketServerFixture()
+        {
+            _tcpListener = new TcpListener(IPAddress.Parse("127.0.0.1"), 8125);
+            _tcpListener.Start();
+        }
+
+        public async Task<WebSocket> AcceptWebSocketAsync()
+        {
+            var tcpClient = await _tcpListener.AcceptTcpClientAsync();
+            var factory = new WebSocketServerFactory();
+            WebSocketHttpContext context = await factory.ReadHttpHeaderFromStreamAsync(tcpClient.GetStream());
+            Assert.True(context.IsWebSocketRequest);
+            return await factory.AcceptWebSocketAsync(context);
+        }
+
+        public void Dispose()
+        {
+            _tcpListener.Stop();
+        }
+    }
+
+    public class WebSocketClientTest : IClassFixture<WebSocketServerFixture>
+    {
+        WebSocketServerFixture _webSocketServer;
+
+        public WebSocketClientTest(WebSocketServerFixture webSocketServer)
+        {
+            _webSocketServer = webSocketServer;
+        }
+
         [Fact]
         public async Task SendStringOK()
         {
-            var tcpListener = new TcpListener(IPAddress.Parse("127.0.0.1"), 8125);
-            tcpListener.Start();
-            var tcpClientTask = tcpListener.AcceptTcpClientAsync();
-            var serverSocketTask = Task.Run(async () =>
-            {
-                var tcpClient = await tcpClientTask;
-                var factory = new WebSocketServerFactory();
-                WebSocketHttpContext context = await factory.ReadHttpHeaderFromStreamAsync(tcpClient.GetStream());
-                Assert.True(context.IsWebSocketRequest);
-                return await factory.AcceptWebSocketAsync(context);
-            });
+            var serverSocketTask = _webSocketServer.AcceptWebSocketAsync();
 
             using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
             {
@@ -38,8 +60,6 @@ namespace forestpeas.WebSocketClient.Tests
                 Assert.True(result.MessageType == WebSocketMessageType.Text);
                 Assert.True(message == Encoding.UTF8.GetString(buffer.Array, 0, result.Count));
             }
-
-            tcpListener.Stop();
         }
     }
 }
