@@ -61,5 +61,22 @@ namespace forestpeas.WebSocketClient.Tests
                 Assert.True(message == Encoding.UTF8.GetString(buffer.Array, 0, result.Count));
             }
         }
+
+        [Fact]
+        public async Task ReceiveStringOK()
+        {
+            var serverSocketTask = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            {
+                var serverSocket = await serverSocketTask;
+                string sendMsg = "Hi!";
+                var buffer = new ArraySegment<byte>(Encoding.UTF8.GetBytes(sendMsg));
+                await serverSocket.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
+
+                string receivedMsg = await client.ReceiveStringAsync();
+                Assert.True(sendMsg == receivedMsg);
+            }
+        }
     }
 }

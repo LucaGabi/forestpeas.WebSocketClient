@@ -203,7 +203,7 @@ namespace forestpeas.WebSocketClient
 
         private async Task ReadStreamAsync(byte[] buffer, int count)
         {
-            int bytesRead = await _networkStream.ReadAsync(buffer, 0, 2).ConfigureAwait(false);
+            int bytesRead = await _networkStream.ReadAsync(buffer, 0, count).ConfigureAwait(false);
             if (bytesRead == 0)
             {
                 throw new EndOfStreamException("Server closed connection.");
