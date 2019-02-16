@@ -26,57 +26,65 @@ namespace forestpeas.WebSocketClient
 
             var tcpClient = new TcpClient();
             await tcpClient.ConnectAsync(uri.Host, uri.Port).ConfigureAwait(false);
-            var networkStream = tcpClient.GetStream(); // TODO: disose the stream
+            var networkStream = tcpClient.GetStream();
 
-            // handshake
-            Random rand = new Random();
-            byte[] secWebSocketKeyBytes = new byte[16];
-            rand.NextBytes(secWebSocketKeyBytes);
-            string secWebSocketKey = Convert.ToBase64String(secWebSocketKeyBytes);
-            string request = $"GET {uri.PathAndQuery} HTTP/1.1\r\n" +
-                             $"Host: {uri.Host}:{uri.Port}\r\n" +
-                             $"Upgrade: websocket\r\n" +
-                             $"Connection: Upgrade\r\n" +
-                             $"Sec-WebSocket-Key: {secWebSocketKey}\r\n" +
-                             $"Sec-WebSocket-Version: 13\r\n" +
-                             $"Origin: http://{uri.Host}:{uri.Port}\r\n\r\n";
-            byte[] requestBytes = Encoding.UTF8.GetBytes(request);
-            await networkStream.WriteAsync(requestBytes, 0, requestBytes.Length).ConfigureAwait(false);
-
-            using (StreamReader reader = new StreamReader(networkStream, Encoding.UTF8, true, 1024, true))
+            try
             {
-                string responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
-                if (responseLine != "HTTP/1.1 101 Switching Protocols")
-                {
-                    throw new InvalidOperationException("Unexpected response line from server: " + responseLine);
-                }
+                // handshake
+                Random rand = new Random();
+                byte[] secWebSocketKeyBytes = new byte[16];
+                rand.NextBytes(secWebSocketKeyBytes);
+                string secWebSocketKey = Convert.ToBase64String(secWebSocketKeyBytes);
+                string request = $"GET {uri.PathAndQuery} HTTP/1.1\r\n" +
+                                 $"Host: {uri.Host}:{uri.Port}\r\n" +
+                                 $"Upgrade: websocket\r\n" +
+                                 $"Connection: Upgrade\r\n" +
+                                 $"Sec-WebSocket-Key: {secWebSocketKey}\r\n" +
+                                 $"Sec-WebSocket-Version: 13\r\n" +
+                                 $"Origin: http://{uri.Host}:{uri.Port}\r\n\r\n";
+                byte[] requestBytes = Encoding.UTF8.GetBytes(request);
+                await networkStream.WriteAsync(requestBytes, 0, requestBytes.Length).ConfigureAwait(false);
 
-                while (true)
+                using (StreamReader reader = new StreamReader(networkStream, Encoding.UTF8, true, 1024, true))
                 {
-                    responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (responseLine == null) // end of stream
+                    string responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (responseLine != "HTTP/1.1 101 Switching Protocols")
                     {
-                        throw new EndOfStreamException("Server closed connection.");
+                        throw new InvalidOperationException("Unexpected response line from server: " + responseLine);
                     }
-                    if (responseLine == string.Empty) break; // finished reading headers
 
-                    var header = responseLine.Split(':');
-                    string headerName = header[0].Trim();
-                    string headerValue = (header.Length > 1) ? header[1].Trim() : string.Empty;
-
-                    if (headerName == "Sec-WebSocket-Accept")
+                    while (true)
                     {
-                        byte[] appendedBytes = Encoding.UTF8.GetBytes(secWebSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-                        string expectedAcceptValue = Convert.ToBase64String(SHA1.Create().ComputeHash(appendedBytes));
-                        if (expectedAcceptValue != headerValue)
+                        responseLine = await reader.ReadLineAsync().ConfigureAwait(false);
+                        if (responseLine == null) // end of stream
                         {
-                            throw new InvalidOperationException("Invalid Sec-WebSocket-Accept value from server.");
+                            throw new EndOfStreamException("Server closed connection.");
+                        }
+                        if (responseLine == string.Empty) break; // finished reading headers
+
+                        var header = responseLine.Split(':');
+                        string headerName = header[0].Trim();
+                        string headerValue = (header.Length > 1) ? header[1].Trim() : string.Empty;
+
+                        if (headerName == "Sec-WebSocket-Accept")
+                        {
+                            byte[] appendedBytes = Encoding.UTF8.GetBytes(secWebSocketKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+                            string expectedAcceptValue = Convert.ToBase64String(SHA1.Create().ComputeHash(appendedBytes));
+                            if (expectedAcceptValue != headerValue)
+                            {
+                                throw new InvalidOperationException("Invalid Sec-WebSocket-Accept value from server.");
+                            }
                         }
                     }
                 }
-            }
 
-            return new WsClient(networkStream);
+                return new WsClient(networkStream);
+            }
+            catch (Exception)
+            {
+                networkStream.Dispose();
+                throw;
+            }
         }
 
         public async Task<string> ReceiveStringAsync()
@@ -145,14 +153,18 @@ namespace forestpeas.WebSocketClient
             }
         }
 
-        public async Task SendStringAsync(string message)
+        public Task SendStringAsync(string message)
         {
             byte[] payload = Encoding.UTF8.GetBytes(message);
+            return SendDataFrameAsync(OpCode.TextFrame, payload);
+        }
+
+        private async Task SendDataFrameAsync(OpCode opCode, byte[] payload)
+        {
             using (MemoryStream memoryStream = new MemoryStream())
             {
                 byte fin = 0x80;
-                byte opCode = 1; // text frame
-                byte firstByte = (byte)(fin | opCode);
+                byte firstByte = (byte)(fin | (byte)opCode);
                 memoryStream.WriteByte(firstByte);
 
                 byte mask = 0x80; // cient must mask the payload
