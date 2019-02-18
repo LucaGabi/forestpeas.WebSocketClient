@@ -89,6 +89,25 @@ namespace forestpeas.WebSocketClient
 
         public async Task<string> ReceiveStringAsync()
         {
+            var dataFrame = await ReceiveDataFrameAsync();
+
+            switch (dataFrame.OpCode) // TODO: complete other types of opCode
+            {
+                case OpCode.TextFrame:
+                    return Encoding.UTF8.GetString(dataFrame.Payload);
+                default:
+                    throw new NotSupportedException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
+            }
+        }
+
+        public Task SendStringAsync(string message)
+        {
+            byte[] payload = Encoding.UTF8.GetBytes(message);
+            return SendDataFrameAsync(OpCode.TextFrame, payload);
+        }
+
+        private async Task<DataFrame> ReceiveDataFrameAsync()
+        {
             byte[] buffer = new byte[2];
             await ReadStreamAsync(buffer, 2).ConfigureAwait(false);
 
@@ -143,20 +162,7 @@ namespace forestpeas.WebSocketClient
 
             byte[] payload = new byte[payloadLength];
             await ReadStreamAsync(payload, payloadLength).ConfigureAwait(false);
-
-            switch (opCode) // TODO: complete other types of opCode
-            {
-                case 1: // text frame
-                    return Encoding.UTF8.GetString(payload);
-                default:
-                    throw new NotSupportedException($"Unknown opcode \"{opCode}\" from server.");
-            }
-        }
-
-        public Task SendStringAsync(string message)
-        {
-            byte[] payload = Encoding.UTF8.GetBytes(message);
-            return SendDataFrameAsync(OpCode.TextFrame, payload);
+            return new DataFrame(isFinBitSet, (OpCode)opCode, payload);
         }
 
         private async Task SendDataFrameAsync(OpCode opCode, byte[] payload)
