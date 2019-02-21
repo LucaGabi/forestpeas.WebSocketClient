@@ -21,6 +21,8 @@ namespace forestpeas.WebSocketClient
             _state = WebSocketState.Open;
         }
 
+        internal Task CloseTask { get; private set; }
+
         public static async Task<WsClient> ConnectAsync(Uri uri)
         {
             if (uri.Scheme.ToLower() == "wss")
@@ -98,21 +100,51 @@ namespace forestpeas.WebSocketClient
 
         public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
         {
-            var dataFrame = await ReceiveDataFrameAsync(cancellationToken);
+            var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
 
             switch (dataFrame.OpCode) // TODO: complete other types of opCode
             {
                 case OpCode.TextFrame:
                     return Encoding.UTF8.GetString(dataFrame.Payload);
+
+                case OpCode.ConnectionClose:
+                    await SendCloseFrameAsync(cancellationToken).ConfigureAwait(false);
+                    throw new InvalidOperationException("Received close frame from server");
+
                 default:
-                    throw new NotSupportedException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
+                    throw new InvalidOperationException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
             }
         }
 
         public Task SendStringAsync(string message)
         {
+            return SendStringAsync(message, CancellationToken.None);
+        }
+
+        public Task SendStringAsync(string message, CancellationToken cancellationToken)
+        {
             byte[] payload = Encoding.UTF8.GetBytes(message);
-            return SendDataFrameAsync(OpCode.TextFrame, payload);
+            return SendDataFrameAsync(OpCode.TextFrame, payload, cancellationToken);
+        }
+
+        private async Task CloseAsync()
+        {
+            if (_state == WebSocketState.Open)
+            {
+                using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                {
+                    await SendCloseFrameAsync(cts.Token).ConfigureAwait(false);
+
+                    // wait for close frame from server
+                    while (true)
+                    {
+                        var dataFrame = await ReceiveDataFrameAsync(cts.Token).ConfigureAwait(false);
+                        if (dataFrame.OpCode == OpCode.ConnectionClose) break;
+                    }
+                }
+            }
+
+            _networkStream.Dispose();
         }
 
         private async Task<DataFrame> ReceiveDataFrameAsync(CancellationToken cancellationToken)
@@ -174,7 +206,7 @@ namespace forestpeas.WebSocketClient
             return new DataFrame(isFinBitSet, (OpCode)opCode, payload);
         }
 
-        private async Task SendDataFrameAsync(OpCode opCode, byte[] payload)
+        private async Task SendDataFrameAsync(OpCode opCode, byte[] payload, CancellationToken cancellationToken)
         {
             using (MemoryStream memoryStream = new MemoryStream())
             {
@@ -224,7 +256,7 @@ namespace forestpeas.WebSocketClient
 
                 memoryStream.Write(payload, 0, payload.Length);
                 memoryStream.Seek(0, SeekOrigin.Begin);
-                await memoryStream.CopyToAsync(_networkStream).ConfigureAwait(false);
+                await memoryStream.CopyToAsync(_networkStream, 81920, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -237,11 +269,18 @@ namespace forestpeas.WebSocketClient
             }
         }
 
+        private async Task SendCloseFrameAsync(CancellationToken cancellationToken)
+        {
+            // TODO: status code and reason
+            await SendDataFrameAsync(OpCode.ConnectionClose, new byte[0], cancellationToken).ConfigureAwait(false);
+            _state = WebSocketState.CloseSent;
+        }
+
         public void Dispose()
         {
             if (!_disposed)
             {
-                _networkStream.Dispose();
+                CloseTask = CloseAsync();
                 _disposed = true;
             }
         }
