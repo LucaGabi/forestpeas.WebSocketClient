@@ -1,8 +1,10 @@
 ﻿using System;
 using System.IO;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace forestpeas.WebSocketClient
@@ -10,11 +12,13 @@ namespace forestpeas.WebSocketClient
     public sealed class WsClient : IDisposable
     {
         private readonly NetworkStream _networkStream;
+        private WebSocketState _state;
         private bool _disposed = false;
 
         private WsClient(NetworkStream networkStream)
         {
             _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
+            _state = WebSocketState.Open;
         }
 
         public static async Task<WsClient> ConnectAsync(Uri uri)
@@ -87,9 +91,14 @@ namespace forestpeas.WebSocketClient
             }
         }
 
-        public async Task<string> ReceiveStringAsync()
+        public Task<string> ReceiveStringAsync()
         {
-            var dataFrame = await ReceiveDataFrameAsync();
+            return ReceiveStringAsync(CancellationToken.None);
+        }
+
+        public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
+        {
+            var dataFrame = await ReceiveDataFrameAsync(cancellationToken);
 
             switch (dataFrame.OpCode) // TODO: complete other types of opCode
             {
@@ -106,10 +115,10 @@ namespace forestpeas.WebSocketClient
             return SendDataFrameAsync(OpCode.TextFrame, payload);
         }
 
-        private async Task<DataFrame> ReceiveDataFrameAsync()
+        private async Task<DataFrame> ReceiveDataFrameAsync(CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[2];
-            await ReadStreamAsync(buffer, 2).ConfigureAwait(false);
+            await ReadStreamAsync(buffer, 2, cancellationToken).ConfigureAwait(false);
 
             byte firstByte = buffer[0];
             bool isFinBitSet = (firstByte & 0x80) == 0x80;
@@ -130,7 +139,7 @@ namespace forestpeas.WebSocketClient
             int payloadLength = secondByte & 0x7F;
             if (payloadLength == 126)
             {
-                await ReadStreamAsync(buffer, 2).ConfigureAwait(false);
+                await ReadStreamAsync(buffer, 2, cancellationToken).ConfigureAwait(false);
                 if (BitConverter.IsLittleEndian)
                 {
                     Array.Reverse(buffer);
@@ -140,7 +149,7 @@ namespace forestpeas.WebSocketClient
             else if (payloadLength == 127)
             {
                 buffer = new byte[8];
-                await ReadStreamAsync(buffer, 8).ConfigureAwait(false);
+                await ReadStreamAsync(buffer, 8, cancellationToken).ConfigureAwait(false);
                 if (BitConverter.IsLittleEndian)
                 {
                     Array.Reverse(buffer);
@@ -161,7 +170,7 @@ namespace forestpeas.WebSocketClient
             }
 
             byte[] payload = new byte[payloadLength];
-            await ReadStreamAsync(payload, payloadLength).ConfigureAwait(false);
+            await ReadStreamAsync(payload, payloadLength, cancellationToken).ConfigureAwait(false);
             return new DataFrame(isFinBitSet, (OpCode)opCode, payload);
         }
 
@@ -219,9 +228,9 @@ namespace forestpeas.WebSocketClient
             }
         }
 
-        private async Task ReadStreamAsync(byte[] buffer, int count)
+        private async Task ReadStreamAsync(byte[] buffer, int count, CancellationToken cancellationToken)
         {
-            int bytesRead = await _networkStream.ReadAsync(buffer, 0, count).ConfigureAwait(false);
+            int bytesRead = await _networkStream.ReadAsync(buffer, 0, count, cancellationToken).ConfigureAwait(false);
             if (bytesRead == 0)
             {
                 throw new EndOfStreamException("Server closed connection.");
