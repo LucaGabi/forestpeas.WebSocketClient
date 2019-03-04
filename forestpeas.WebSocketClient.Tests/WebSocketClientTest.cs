@@ -47,16 +47,16 @@ namespace forestpeas.WebSocketClient.Tests
         [Fact]
         public async Task SendStringOK()
         {
-            var serverSocketTask = _webSocketServer.AcceptWebSocketAsync();
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
             using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
             {
-                var serverSocket = await serverSocketTask;
+                var server = await serverTask;
                 string message = "Hi!";
                 await client.SendStringAsync(message);
 
                 var buffer = new ArraySegment<byte>(new byte[1024]);
-                WebSocketReceiveResult result = await serverSocket.ReceiveAsync(buffer, CancellationToken.None);
+                WebSocketReceiveResult result = await server.ReceiveAsync(buffer, CancellationToken.None);
                 Assert.True(result.MessageType == WebSocketMessageType.Text);
                 Assert.True(message == Encoding.UTF8.GetString(buffer.Array, 0, result.Count));
             }
@@ -65,18 +65,46 @@ namespace forestpeas.WebSocketClient.Tests
         [Fact]
         public async Task ReceiveStringOK()
         {
-            var serverSocketTask = _webSocketServer.AcceptWebSocketAsync();
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
             using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
             {
-                var serverSocket = await serverSocketTask;
+                var server = await serverTask;
                 string sendMsg = "Hi!";
                 var buffer = new ArraySegment<byte>(Encoding.UTF8.GetBytes(sendMsg));
-                await serverSocket.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
+                await server.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
 
                 string receivedMsg = await client.ReceiveStringAsync();
                 Assert.True(sendMsg == receivedMsg);
             }
+        }
+
+        [Fact]
+        public async Task ClientCloseFirst()
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+            var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125"));
+            var server = await serverTask;
+
+            // let server respond to client's close frame
+            var serverCloseTask = server.ReceiveAsync(new ArraySegment<byte>(new byte[1024]), CancellationToken.None);
+            client.Dispose();
+            await serverCloseTask;
+            await client.CloseTask;
+            Assert.Null(client.CloseException);
+        }
+
+        [Fact]
+        public async Task ServerCloseFirst()
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+            var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125"));
+            var server = await serverTask;
+
+            await server.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+            client.Dispose();
+            await client.CloseTask;
+            Assert.Null(client.CloseException);
         }
     }
 }

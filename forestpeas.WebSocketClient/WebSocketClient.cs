@@ -2,10 +2,13 @@
 using System.IO;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+[assembly: InternalsVisibleTo("forestpeas.WebSocketClient.Tests")]
 
 namespace forestpeas.WebSocketClient
 {
@@ -22,6 +25,8 @@ namespace forestpeas.WebSocketClient
         }
 
         internal Task CloseTask { get; private set; }
+
+        internal Exception CloseException { get; private set; }
 
         public static async Task<WsClient> ConnectAsync(Uri uri)
         {
@@ -133,13 +138,20 @@ namespace forestpeas.WebSocketClient
             {
                 using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    await SendCloseFrameAsync(cts.Token).ConfigureAwait(false);
-
-                    // wait for close frame from server
-                    while (true)
+                    try
                     {
-                        var dataFrame = await ReceiveDataFrameAsync(cts.Token).ConfigureAwait(false);
-                        if (dataFrame.OpCode == OpCode.ConnectionClose) break;
+                        await SendCloseFrameAsync(cts.Token).ConfigureAwait(false);
+
+                        // wait for close frame from server
+                        while (true)
+                        {
+                            var dataFrame = await ReceiveDataFrameAsync(cts.Token).ConfigureAwait(false);
+                            if (dataFrame.OpCode == OpCode.ConnectionClose) break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        CloseException = ex;
                     }
                 }
             }
@@ -262,6 +274,8 @@ namespace forestpeas.WebSocketClient
 
         private async Task ReadStreamAsync(byte[] buffer, int count, CancellationToken cancellationToken)
         {
+            if (count == 0) return;
+
             int bytesRead = await _networkStream.ReadAsync(buffer, 0, count, cancellationToken).ConfigureAwait(false);
             if (bytesRead == 0)
             {
