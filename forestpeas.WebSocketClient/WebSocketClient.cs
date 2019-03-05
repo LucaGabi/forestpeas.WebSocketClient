@@ -177,7 +177,9 @@ namespace forestpeas.WebSocketClient
             bool isMaskBitSet = (secondByte & 0x80) == 0x80;
             if (isMaskBitSet)
             {
-                // TODO: according to spec, close the connection.
+                // A client MUST close a connection if it detects a masked frame.
+                // In this case, it MAY use the status code 1002(protocol error) as defined in Section 7.4.1.
+                await SendCloseFrameAsync(CancellationToken.None, WebSocketCloseStatus.ProtocolError);
             }
 
             int payloadLength = secondByte & 0x7F;
@@ -283,10 +285,28 @@ namespace forestpeas.WebSocketClient
             }
         }
 
-        private async Task SendCloseFrameAsync(CancellationToken cancellationToken)
+        private async Task SendCloseFrameAsync(CancellationToken cancellationToken, WebSocketCloseStatus closeStatus = WebSocketCloseStatus.Empty, string closeReason = null)
         {
-            // TODO: status code and reason
-            await SendDataFrameAsync(OpCode.ConnectionClose, new byte[0], cancellationToken).ConfigureAwait(false);
+            byte[] statusBuffer = BitConverter.GetBytes((ushort)closeStatus);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(statusBuffer);
+            }
+
+            byte[] payload;
+            if (closeReason != null)
+            {
+                byte[] reasonBuffer = Encoding.UTF8.GetBytes(closeReason);
+                payload = new byte[statusBuffer.Length + reasonBuffer.Length];
+                Buffer.BlockCopy(statusBuffer, 0, payload, 0, statusBuffer.Length);
+                Buffer.BlockCopy(reasonBuffer, 0, payload, statusBuffer.Length, reasonBuffer.Length);
+            }
+            else
+            {
+                payload = statusBuffer;
+            }
+
+            await SendDataFrameAsync(OpCode.ConnectionClose, payload, cancellationToken).ConfigureAwait(false);
             _state = WebSocketState.CloseSent;
         }
 
