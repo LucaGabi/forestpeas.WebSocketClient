@@ -79,6 +79,44 @@ namespace forestpeas.WebSocketClient.Tests
             }
         }
 
+        [Theory]
+        [InlineData(128)]
+        [InlineData(65536)]
+        public async Task SendDataWithDifferentLengths(int length)
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            {
+                var server = await serverTask;
+                byte[] data = new byte[length];
+                await client.SendByteArrayAsync(data);
+
+                var buffer = new ArraySegment<byte>(new byte[length]);
+                WebSocketReceiveResult result = await server.ReceiveAsync(buffer, CancellationToken.None);
+                Assert.True(length == result.Count);
+            }
+        }
+
+        [Theory]
+        [InlineData(128)]
+        [InlineData(65536)]
+        public async Task ReceiveDataWithDifferentLengths(int length)
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            {
+                var server = await serverTask;
+                byte[] data = new byte[length];
+                var buffer = new ArraySegment<byte>(data);
+                await server.SendAsync(buffer, WebSocketMessageType.Binary, true, CancellationToken.None);
+
+                var receivedMsg = await client.ReceiveByteArrayAsync();
+                Assert.True(length == receivedMsg.Length);
+            }
+        }
+
         [Fact]
         public async Task ClientCloseFirst()
         {
