@@ -105,17 +105,55 @@ namespace forestpeas.WebSocketClient
             return ReceiveStringAsync(CancellationToken.None);
         }
 
+        public Task<byte[]> ReceiveByteArrayAsync()
+        {
+            return ReceiveByteArrayAsync(CancellationToken.None);
+        }
+
         public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
         {
             var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
 
-            switch (dataFrame.OpCode) // TODO: complete other types of opCode
+            switch (dataFrame.OpCode)
             {
                 case OpCode.TextFrame:
                     return Encoding.UTF8.GetString(dataFrame.Payload);
 
                 case OpCode.ConnectionClose:
-                    throw new InvalidOperationException("Received close frame from server");
+                    throw new InvalidOperationException("Received close frame from server.");
+
+                case OpCode.ContinuationFrame:
+                    throw new NotSupportedException();
+
+                case OpCode.Ping:
+                case OpCode.Pong:
+                case OpCode.BinaryFrame:
+                    throw new InvalidOperationException($"Expect text frame but received \"{dataFrame.OpCode}\".");
+
+                default:
+                    throw new InvalidOperationException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
+            }
+        }
+
+        public async Task<byte[]> ReceiveByteArrayAsync(CancellationToken cancellationToken)
+        {
+            var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
+
+            switch (dataFrame.OpCode)
+            {
+                case OpCode.BinaryFrame:
+                    return dataFrame.Payload;
+
+                case OpCode.ConnectionClose:
+                    throw new InvalidOperationException("Received close frame from server.");
+
+                case OpCode.ContinuationFrame:
+                    throw new NotSupportedException();
+
+                case OpCode.Ping:
+                case OpCode.Pong:
+                case OpCode.TextFrame:
+                    throw new InvalidOperationException($"Expect binary frame but received \"{dataFrame.OpCode}\".");
 
                 default:
                     throw new InvalidOperationException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
@@ -127,10 +165,20 @@ namespace forestpeas.WebSocketClient
             return SendStringAsync(message, CancellationToken.None);
         }
 
+        public Task SendByteArrayAsync(byte[] message)
+        {
+            return SendByteArrayAsync(message, CancellationToken.None);
+        }
+
         public Task SendStringAsync(string message, CancellationToken cancellationToken)
         {
             byte[] payload = Encoding.UTF8.GetBytes(message);
             return SendDataFrameAsync(OpCode.TextFrame, payload, cancellationToken);
+        }
+
+        public Task SendByteArrayAsync(byte[] message, CancellationToken cancellationToken)
+        {
+            return SendDataFrameAsync(OpCode.TextFrame, message, cancellationToken);
         }
 
         private async Task CloseAsync()
