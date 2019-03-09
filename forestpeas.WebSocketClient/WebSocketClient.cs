@@ -28,6 +28,8 @@ namespace forestpeas.WebSocketClient
 
         internal Exception CloseException { get; private set; }
 
+        public ulong MaxPayloadLength { get; set; } = 1024 * 1024 * 10;
+
         public static async Task<WsClient> ConnectAsync(Uri uri)
         {
             if (uri.Scheme.ToLower() == "wss")
@@ -201,12 +203,11 @@ namespace forestpeas.WebSocketClient
                 }
                 ulong lengthUInt64 = BitConverter.ToUInt64(buffer, 0);
 
-                ulong maxLength = 1024 * 1024 * 10;// TODO: change to property that can be set
-                if (lengthUInt64 > maxLength)
+                if (lengthUInt64 > MaxPayloadLength)
                 {
-                    throw new InvalidOperationException($"Payload length cannot exceed{maxLength}");
+                    throw new InvalidOperationException($"Payload length cannot exceed{MaxPayloadLength}");
                 }
-                if (lengthUInt64 > int.MaxValue) // for simplicity for now (Stream.Read does not accept a ulong count parameter)
+                if (lengthUInt64 > int.MaxValue) // for simplicity (Stream.Read does not accept a ulong count parameter)
                 {
                     throw new NotSupportedException($"Payload length cannot exceed{int.MaxValue}");
                 }
