@@ -37,7 +37,8 @@ namespace forestpeas.WebSocketClient.Tests
 
     public class WebSocketClientTest : IClassFixture<WebSocketServerFixture>
     {
-        WebSocketServerFixture _webSocketServer;
+        private WebSocketServerFixture _webSocketServer;
+        private readonly string _serverUrl = "ws://localhost:8125";
 
         public WebSocketClientTest(WebSocketServerFixture webSocketServer)
         {
@@ -49,7 +50,7 @@ namespace forestpeas.WebSocketClient.Tests
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
-            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
             {
                 var server = await serverTask;
                 string message = "Hi!";
@@ -67,7 +68,7 @@ namespace forestpeas.WebSocketClient.Tests
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
-            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
             {
                 var server = await serverTask;
                 string sendMsg = "Hi!";
@@ -86,7 +87,7 @@ namespace forestpeas.WebSocketClient.Tests
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
-            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
             {
                 var server = await serverTask;
                 byte[] data = new byte[length];
@@ -105,7 +106,7 @@ namespace forestpeas.WebSocketClient.Tests
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
 
-            using (var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125")))
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
             {
                 var server = await serverTask;
                 byte[] data = new byte[length];
@@ -121,7 +122,7 @@ namespace forestpeas.WebSocketClient.Tests
         public async Task ClientCloseFirst()
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
-            var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125"));
+            var client = await WsClient.ConnectAsync(new Uri(_serverUrl));
             var server = await serverTask;
 
             // let server respond to client's close frame
@@ -136,7 +137,7 @@ namespace forestpeas.WebSocketClient.Tests
         public async Task ServerCloseFirst()
         {
             var serverTask = _webSocketServer.AcceptWebSocketAsync();
-            var client = await WsClient.ConnectAsync(new Uri("ws://localhost:8125"));
+            var client = await WsClient.ConnectAsync(new Uri(_serverUrl));
             var server = await serverTask;
 
             await server.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
