@@ -15,13 +15,13 @@ namespace forestpeas.WebSocketClient
     public sealed class WsClient : IDisposable
     {
         private readonly NetworkStream _networkStream;
-        private WebSocketState _state;
+        private bool _isCloseSent = false;
+        private bool _isCloseReceived = false;
         private bool _disposed = false;
 
         private WsClient(NetworkStream networkStream)
         {
             _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
-            _state = WebSocketState.Open;
         }
 
         internal Task CloseTask { get; private set; }
@@ -113,7 +113,6 @@ namespace forestpeas.WebSocketClient
                     return Encoding.UTF8.GetString(dataFrame.Payload);
 
                 case OpCode.ConnectionClose:
-                    await SendCloseFrameAsync(cancellationToken).ConfigureAwait(false);
                     throw new InvalidOperationException("Received close frame from server");
 
                 default:
@@ -134,14 +133,14 @@ namespace forestpeas.WebSocketClient
 
         private async Task CloseAsync()
         {
-            if (_state == WebSocketState.Open)
+            using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
-                using (CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                try
                 {
-                    try
-                    {
-                        await SendCloseFrameAsync(cts.Token).ConfigureAwait(false);
+                    await SendCloseFrameAsync(cts.Token).ConfigureAwait(false);
 
+                    if (!_isCloseReceived)
+                    {
                         // wait for close frame from server
                         while (true)
                         {
@@ -149,10 +148,10 @@ namespace forestpeas.WebSocketClient
                             if (dataFrame.OpCode == OpCode.ConnectionClose) break;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        CloseException = ex;
-                    }
+                }
+                catch (Exception ex)
+                {
+                    CloseException = ex;
                 }
             }
 
@@ -217,6 +216,13 @@ namespace forestpeas.WebSocketClient
 
             byte[] payload = new byte[payloadLength];
             await ReadStreamAsync(payload, payloadLength, cancellationToken).ConfigureAwait(false);
+
+            if ((OpCode)opCode == OpCode.ConnectionClose)
+            {
+                _isCloseReceived = true;
+                await SendCloseFrameAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             return new DataFrame(isFinBitSet, (OpCode)opCode, payload);
         }
 
@@ -287,6 +293,8 @@ namespace forestpeas.WebSocketClient
 
         private async Task SendCloseFrameAsync(CancellationToken cancellationToken, WebSocketCloseStatus closeStatus = WebSocketCloseStatus.Empty, string closeReason = null)
         {
+            if (_isCloseSent) return;
+
             byte[] statusBuffer = BitConverter.GetBytes((ushort)closeStatus);
             if (BitConverter.IsLittleEndian)
             {
@@ -307,7 +315,7 @@ namespace forestpeas.WebSocketClient
             }
 
             await SendDataFrameAsync(OpCode.ConnectionClose, payload, cancellationToken).ConfigureAwait(false);
-            _state = WebSocketState.CloseSent;
+            _isCloseSent = true;
         }
 
         public void Dispose()
