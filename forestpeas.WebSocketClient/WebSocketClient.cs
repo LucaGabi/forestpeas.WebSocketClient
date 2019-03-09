@@ -178,7 +178,7 @@ namespace forestpeas.WebSocketClient
 
         public Task SendByteArrayAsync(byte[] message, CancellationToken cancellationToken)
         {
-            return SendDataFrameAsync(OpCode.TextFrame, message, cancellationToken);
+            return SendDataFrameAsync(OpCode.BinaryFrame, message, cancellationToken);
         }
 
         private async Task CloseAsync()
