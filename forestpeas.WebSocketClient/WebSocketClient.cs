@@ -113,50 +113,32 @@ namespace forestpeas.WebSocketClient
         public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
         {
             var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
-
-            switch (dataFrame.OpCode)
-            {
-                case OpCode.TextFrame:
-                    return Encoding.UTF8.GetString(dataFrame.Payload);
-
-                case OpCode.ConnectionClose:
-                    throw new InvalidOperationException("Received close frame from server.");
-
-                case OpCode.ContinuationFrame:
-                    throw new NotSupportedException();
-
-                case OpCode.Ping:
-                case OpCode.Pong:
-                case OpCode.BinaryFrame:
-                    throw new InvalidOperationException($"Expect text frame but received \"{dataFrame.OpCode}\".");
-
-                default:
-                    throw new InvalidOperationException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
-            }
+            CheckOpCode(dataFrame.OpCode, OpCode.TextFrame);
+            return Encoding.UTF8.GetString(dataFrame.Payload);
         }
 
         public async Task<byte[]> ReceiveByteArrayAsync(CancellationToken cancellationToken)
         {
             var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
+            CheckOpCode(dataFrame.OpCode, OpCode.BinaryFrame);
+            return dataFrame.Payload;
+        }
 
-            switch (dataFrame.OpCode)
+        private void CheckOpCode(OpCode received, OpCode expected)
+        {
+            if (received == expected) return;
+
+            // If we want to respond to a Ping frame as soon as possible, we must read network stream forever in a while loop,
+            // and put frames other than Ping in a buffered stream. If called from a user of this class, we read from the buffered stream.
+            // So this buffered stream must be thread safe, and would block util there is data available, and preferably release
+            // resouces when data has been read.
+            switch (received)
             {
-                case OpCode.BinaryFrame:
-                    return dataFrame.Payload;
-
                 case OpCode.ConnectionClose:
                     throw new InvalidOperationException("Received close frame from server.");
 
-                case OpCode.ContinuationFrame:
-                    throw new NotSupportedException();
-
-                case OpCode.Ping:
-                case OpCode.Pong:
-                case OpCode.TextFrame:
-                    throw new InvalidOperationException($"Expect binary frame but received \"{dataFrame.OpCode}\".");
-
                 default:
-                    throw new InvalidOperationException($"Unknown opcode \"{dataFrame.OpCode}\" from server.");
+                    throw new InvalidOperationException($"Expect \"{expected}\" but received \"{received}\".");
             }
         }
 
@@ -217,7 +199,7 @@ namespace forestpeas.WebSocketClient
             bool isFinBitSet = (firstByte & 0x80) == 0x80;
             if (!isFinBitSet)
             {
-                throw new NotImplementedException("work in progress");
+                throw new NotImplementedException("work in progress"); // TODO: continuation frame
             }
 
             int opCode = firstByte & 0x0F;
