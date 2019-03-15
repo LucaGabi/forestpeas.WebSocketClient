@@ -1,7 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks>netstandard2.0;net45</TargetFrameworks>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>forestpeas</Authors>
+    <Description>Simple WebSocket Client.</Description>
+    <Copyright>forestpeas</Copyright>
+    <PackageProjectUrl>https://github.com/forestpeas/forestpeas.WebSocketClient</PackageProjectUrl>
+    <RepositoryType>https://github.com/forestpeas/forestpeas.WebSocketClient</RepositoryType>
+    <PackageTags>WebSocket</PackageTags>
+    <PackageLicenseUrl>https://github.com/forestpeas/forestpeas.WebSocketClient/blob/develop/LICENSE</PackageLicenseUrl>
   </PropertyGroup>
 
 </Project>
