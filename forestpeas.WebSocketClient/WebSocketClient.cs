@@ -12,6 +12,9 @@ using System.Threading.Tasks;
 
 namespace forestpeas.WebSocketClient
 {
+    /// <summary>
+    /// WebSocket client for sending and receiving messages.
+    /// </summary>
     public sealed class WsClient : IDisposable
     {
         private readonly NetworkStream _networkStream;
@@ -28,8 +31,15 @@ namespace forestpeas.WebSocketClient
 
         internal Exception CloseException { get; private set; }
 
+        /// <summary>
+        /// Gets or sets the max payload length.
+        /// </summary>
         public ulong MaxPayloadLength { get; set; } = 1024 * 1024 * 10;
 
+        /// <summary>
+        /// Connect to a WebSocket servr with the specified Uri. 
+        /// </summary>
+        /// <param name="uri">The Uri of a WebSocket servr to connect to.</param>
         public static async Task<WsClient> ConnectAsync(Uri uri)
         {
             if (uri.Scheme.ToLower() == "wss")
@@ -100,16 +110,26 @@ namespace forestpeas.WebSocketClient
             }
         }
 
+        /// <summary>
+        /// Receive a text frame.
+        /// </summary>
         public Task<string> ReceiveStringAsync()
         {
             return ReceiveStringAsync(CancellationToken.None);
         }
 
+        /// <summary>
+        /// Receive a binary frame.
+        /// </summary>
         public Task<byte[]> ReceiveByteArrayAsync()
         {
             return ReceiveByteArrayAsync(CancellationToken.None);
         }
 
+        /// <summary>
+        /// Receive a text frame.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
         {
             var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
@@ -117,6 +137,10 @@ namespace forestpeas.WebSocketClient
             return Encoding.UTF8.GetString(dataFrame.Payload);
         }
 
+        /// <summary>
+        /// Receive a binary frame.
+        /// </summary>
+        /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         public async Task<byte[]> ReceiveByteArrayAsync(CancellationToken cancellationToken)
         {
             var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
@@ -142,22 +166,42 @@ namespace forestpeas.WebSocketClient
             }
         }
 
+        /// <summary>
+        /// Send a text message.
+        /// </summary>
+        /// <param name="message">A text message sent to the server.</param>
         public Task SendStringAsync(string message)
         {
             return SendStringAsync(message, CancellationToken.None);
         }
 
+        /// <summary>
+        /// Send a binary message.
+        /// </summary>
+        /// <param name="message">A binary message sent to the server.</param>
         public Task SendByteArrayAsync(byte[] message)
         {
             return SendByteArrayAsync(message, CancellationToken.None);
         }
 
+        /// <summary>
+        /// Send a text message.
+        /// </summary>
+        /// <param name="message">A text message sent to the server.</param>
+        /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
+        /// <returns></returns>
         public Task SendStringAsync(string message, CancellationToken cancellationToken)
         {
             byte[] payload = Encoding.UTF8.GetBytes(message);
             return SendDataFrameAsync(OpCode.TextFrame, payload, cancellationToken);
         }
 
+        /// <summary>
+        /// Send a binary message.
+        /// </summary>
+        /// <param name="message">A binary message sent to the server.</param>
+        /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
+        /// <returns></returns>
         public Task SendByteArrayAsync(byte[] message, CancellationToken cancellationToken)
         {
             return SendDataFrameAsync(OpCode.BinaryFrame, message, cancellationToken);
@@ -349,6 +393,9 @@ namespace forestpeas.WebSocketClient
             _isCloseSent = true;
         }
 
+        /// <summary>
+        /// Close the WebSocket Connection.
+        /// </summary>
         public void Dispose()
         {
             if (!_disposed)
