@@ -80,6 +80,21 @@ namespace forestpeas.WebSocketClient.Tests
             }
         }
 
+        [Fact]
+        public async Task ReceiveStringWithCancel()
+        {
+            var _ = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
+            {
+                using (var cts = new CancellationTokenSource())
+                {
+                    cts.Cancel();
+                    await Assert.ThrowsAsync<TaskCanceledException>(() => client.ReceiveStringAsync(cts.Token));
+                }
+            }
+        }
+
         [Theory]
         [InlineData(128)]
         [InlineData(65536)]
