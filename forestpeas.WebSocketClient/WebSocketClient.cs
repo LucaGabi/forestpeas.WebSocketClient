@@ -370,23 +370,34 @@ namespace forestpeas.WebSocketClient
         {
             if (_isCloseSent) return;
 
-            byte[] statusBuffer = BitConverter.GetBytes((ushort)closeStatus);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(statusBuffer);
-            }
-
             byte[] payload;
-            if (closeReason != null)
+
+            // 1005 (WebSocketCloseStatus.Empty) is a reserved value and MUST NOT be set as a status code in a
+            // Close control frame by an endpoint.  It is designated for use in applications expecting a status 
+            // code to indicate that no status code was actually present.
+            if (closeStatus != WebSocketCloseStatus.Empty)
             {
-                byte[] reasonBuffer = Encoding.UTF8.GetBytes(closeReason);
-                payload = new byte[statusBuffer.Length + reasonBuffer.Length];
-                Buffer.BlockCopy(statusBuffer, 0, payload, 0, statusBuffer.Length);
-                Buffer.BlockCopy(reasonBuffer, 0, payload, statusBuffer.Length, reasonBuffer.Length);
+                byte[] statusBuffer = BitConverter.GetBytes((ushort)closeStatus);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(statusBuffer);
+                }
+
+                if (closeReason != null)
+                {
+                    byte[] reasonBuffer = Encoding.UTF8.GetBytes(closeReason);
+                    payload = new byte[statusBuffer.Length + reasonBuffer.Length];
+                    Buffer.BlockCopy(statusBuffer, 0, payload, 0, statusBuffer.Length);
+                    Buffer.BlockCopy(reasonBuffer, 0, payload, statusBuffer.Length, reasonBuffer.Length);
+                }
+                else
+                {
+                    payload = statusBuffer;
+                }
             }
             else
             {
-                payload = statusBuffer;
+                payload = new byte[0];
             }
 
             await SendDataFrameAsync(OpCode.ConnectionClose, payload, cancellationToken).ConfigureAwait(false);
