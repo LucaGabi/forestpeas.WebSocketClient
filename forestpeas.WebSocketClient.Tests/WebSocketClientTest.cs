@@ -1,5 +1,6 @@
 ﻿using Ninja.WebSockets;
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -77,6 +78,51 @@ namespace forestpeas.WebSocketClient.Tests
 
                 string receivedMsg = await client.ReceiveStringAsync();
                 Assert.True(sendMsg == receivedMsg);
+            }
+        }
+
+        [Fact]
+        public async Task ReceiveStringWithFragmentation()
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
+            {
+                var server = await serverTask;
+                string[] fragments = new string[] { "Happy ", "new ", "year!" };
+                for (int i = 0; i < fragments.Length; i++)
+                {
+                    var buffer = new ArraySegment<byte>(Encoding.UTF8.GetBytes(fragments[i]));
+                    await server.SendAsync(buffer, WebSocketMessageType.Text, (i + 1) == fragments.Length, CancellationToken.None);
+                }
+
+                string receivedMsg = await client.ReceiveStringAsync();
+                Assert.True(string.Join(string.Empty, fragments) == receivedMsg);
+            }
+        }
+
+        [Fact]
+        public async Task ReceiveByteArrayWithFragmentation()
+        {
+            var serverTask = _webSocketServer.AcceptWebSocketAsync();
+
+            using (var client = await WsClient.ConnectAsync(new Uri(_serverUrl)))
+            {
+                var server = await serverTask;
+                byte[][] fragments = new byte[][]
+                {
+                    new byte[] { 0, 1, 2 },
+                    new byte[] { 3, 4 },
+                    new byte[] { 5, 6, 7, 8}
+                };
+                for (int i = 0; i < fragments.Length; i++)
+                {
+                    var buffer = new ArraySegment<byte>(fragments[i]);
+                    await server.SendAsync(buffer, WebSocketMessageType.Binary, (i + 1) == fragments.Length, CancellationToken.None);
+                }
+
+                byte[] receivedMsg = await client.ReceiveByteArrayAsync();
+                Assert.True(Enumerable.SequenceEqual(receivedMsg, fragments.SelectMany(a => a)));
             }
         }
 

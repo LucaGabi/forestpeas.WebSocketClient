@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -111,7 +112,7 @@ namespace forestpeas.WebSocketClient
         }
 
         /// <summary>
-        /// Receive a text frame.
+        /// Receive a text message.
         /// </summary>
         public Task<string> ReceiveStringAsync()
         {
@@ -119,7 +120,7 @@ namespace forestpeas.WebSocketClient
         }
 
         /// <summary>
-        /// Receive a binary frame.
+        /// Receive a binary message.
         /// </summary>
         public Task<byte[]> ReceiveByteArrayAsync()
         {
@@ -127,25 +128,68 @@ namespace forestpeas.WebSocketClient
         }
 
         /// <summary>
-        /// Receive a text frame.
+        /// Receive a text message.
         /// </summary>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         public async Task<string> ReceiveStringAsync(CancellationToken cancellationToken)
         {
-            var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
-            CheckOpCode(dataFrame.OpCode, OpCode.TextFrame);
-            return Encoding.UTF8.GetString(dataFrame.Payload);
+            string fragments = string.Empty;
+            for (int i = 0; i < 1000; i++)
+            {
+                var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
+                CheckOpCode(dataFrame.OpCode, OpCode.TextFrame);
+                if (dataFrame.IsFinBitSet)
+                {
+                    if (dataFrame.OpCode != OpCode.ContinuationFrame)
+                    {
+                        return Encoding.UTF8.GetString(dataFrame.Payload);
+                    }
+                    return fragments + Encoding.UTF8.GetString(dataFrame.Payload);
+                }
+                else
+                {
+                    fragments += Encoding.UTF8.GetString(dataFrame.Payload);
+                }
+            }
+
+            throw new InvalidOperationException("Too many continuation frames from server!");
         }
 
         /// <summary>
-        /// Receive a binary frame.
+        /// Receive a binary message.
         /// </summary>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         public async Task<byte[]> ReceiveByteArrayAsync(CancellationToken cancellationToken)
         {
-            var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
-            CheckOpCode(dataFrame.OpCode, OpCode.BinaryFrame);
-            return dataFrame.Payload;
+            int fragmentsLength = 0;
+            List<byte[]> fragments = new List<byte[]>();
+            for (int i = 0; i < 1000; i++)
+            {
+                var dataFrame = await ReceiveDataFrameAsync(cancellationToken).ConfigureAwait(false);
+                CheckOpCode(dataFrame.OpCode, OpCode.BinaryFrame);
+                if (dataFrame.IsFinBitSet)
+                {
+                    if (dataFrame.OpCode != OpCode.ContinuationFrame) return dataFrame.Payload;
+
+                    fragmentsLength += dataFrame.Payload.Length;
+                    fragments.Add(dataFrame.Payload);
+                    byte[] wholeMessage = new byte[fragmentsLength];
+                    int offset = 0;
+                    foreach (var fragment in fragments)
+                    {
+                        Buffer.BlockCopy(fragment, 0, wholeMessage, offset, fragment.Length);
+                        offset += fragment.Length;
+                    }
+                    return wholeMessage;
+                }
+                else
+                {
+                    fragmentsLength += dataFrame.Payload.Length;
+                    fragments.Add(dataFrame.Payload);
+                }
+            }
+
+            throw new InvalidOperationException("Too many continuation frames from server!");
         }
 
         private void CheckOpCode(OpCode received, OpCode expected)
@@ -158,6 +202,9 @@ namespace forestpeas.WebSocketClient
             // resouces when data has been read.
             switch (received)
             {
+                case OpCode.ContinuationFrame:
+                    return;
+
                 case OpCode.ConnectionClose:
                     throw new InvalidOperationException("Received close frame from server.");
 
@@ -241,10 +288,6 @@ namespace forestpeas.WebSocketClient
 
             byte firstByte = buffer[0];
             bool isFinBitSet = (firstByte & 0x80) == 0x80;
-            if (!isFinBitSet)
-            {
-                throw new NotImplementedException("work in progress"); // TODO: continuation frame
-            }
 
             int opCode = firstByte & 0x0F;
 
