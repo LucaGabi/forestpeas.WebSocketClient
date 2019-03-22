@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
@@ -18,12 +19,12 @@ namespace forestpeas.WebSocketClient
     /// </summary>
     public sealed class WsClient : IDisposable
     {
-        private readonly NetworkStream _networkStream;
+        private readonly Stream _networkStream;
         private bool _isCloseSent = false;
         private bool _isCloseReceived = false;
         private bool _disposed = false;
 
-        private WsClient(NetworkStream networkStream)
+        private WsClient(Stream networkStream)
         {
             _networkStream = networkStream ?? throw new ArgumentNullException(nameof(networkStream));
         }
@@ -43,17 +44,19 @@ namespace forestpeas.WebSocketClient
         /// <param name="uri">The Uri of a WebSocket servr to connect to.</param>
         public static async Task<WsClient> ConnectAsync(Uri uri)
         {
-            if (uri.Scheme.ToLower() == "wss")
-            {
-                throw new NotSupportedException();
-            }
-
             var tcpClient = new TcpClient();
             await tcpClient.ConnectAsync(uri.Host, uri.Port).ConfigureAwait(false);
-            var networkStream = tcpClient.GetStream();
+            Stream networkStream = tcpClient.GetStream();
 
             try
             {
+                if (uri.Scheme == "wss" || uri.Scheme == "https")
+                {
+                    SslStream sslStream = new SslStream(networkStream, false);
+                    await sslStream.AuthenticateAsClientAsync(uri.Host);
+                    networkStream = sslStream;
+                }
+
                 // handshake
                 Random rand = new Random();
                 byte[] secWebSocketKeyBytes = new byte[16];
