@@ -405,11 +405,17 @@ namespace forestpeas.WebSocketClient
         {
             if (count == 0) return;
 
-            int bytesRead = await _networkStream.ReadAsync(buffer, 0, count, cancellationToken).ConfigureAwait(false);
-            if (bytesRead == 0)
+            int offset = 0;
+            do
             {
-                throw new EndOfStreamException("Server closed connection.");
-            }
+                int bytesRead = await _networkStream.ReadAsync(buffer, offset, count - offset, cancellationToken).ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    throw new EndOfStreamException("Server closed connection.");
+                }
+
+                offset += bytesRead;
+            } while (offset < count);
         }
 
         private async Task SendCloseFrameAsync(CancellationToken cancellationToken, WebSocketCloseStatus closeStatus = WebSocketCloseStatus.Empty, string closeReason = null)
