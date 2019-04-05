@@ -2,6 +2,11 @@
 
 A simple WebSocket client implementation with asynchronous APIs.
 
+NuGet package is available:
+```bash
+PM> Install-Package forestpeas.WebSocketClient
+```
+
 # How to use
 
 ```c#
