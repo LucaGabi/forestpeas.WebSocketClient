@@ -5,7 +5,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Authors>forestpeas</Authors>
-    <Description>Simple WebSocket Client.</Description>
+    <Description>A simple WebSocket client implementation with asynchronous APIs.</Description>
     <Copyright>forestpeas</Copyright>
     <PackageProjectUrl>https://github.com/forestpeas/forestpeas.WebSocketClient</PackageProjectUrl>
     <RepositoryType>https://github.com/forestpeas/forestpeas.WebSocketClient</RepositoryType>
